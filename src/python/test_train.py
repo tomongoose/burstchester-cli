@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import train
 import train_gemma_2b_it_lora
 import train_gemma4_e2b_full
+import train_gemma4_full
 
 
 class _CudaAvailable:
@@ -77,13 +78,55 @@ class Gemma4WrapperTests(unittest.TestCase):
             return_value={"modelRepo": "google/gemma-3-4b-it"},
         ), mock.patch.object(
             train_gemma4_e2b_full,
-            "train_from_config",
+            "train_gemma4_full_from_config",
             side_effect=lambda config: captured.update(config),
         ):
             train_gemma4_e2b_full.main()
 
         self.assertEqual(captured["modelRepo"], "google/gemma-3-4b-it")
         self.assertEqual(captured["trainingMethod"], "full")
+
+    def test_gemma4_full_load_kwargs_use_bfloat16_when_supported(self):
+        class _Bf16Cuda:
+            @staticmethod
+            def is_available():
+                return True
+
+            @staticmethod
+            def is_bf16_supported():
+                return True
+
+        class _Torch:
+            bfloat16 = "bfloat16"
+            float16 = "float16"
+            float32 = "float32"
+            cuda = _Bf16Cuda()
+
+        self.assertEqual(
+            train_gemma4_full.resolve_gemma4_model_load_kwargs(_Torch()),
+            {
+                "device_map": "auto",
+                "torch_dtype": "bfloat16",
+            },
+        )
+
+    def test_gemma4_text_renderer_uses_processor_chat_template(self):
+        class _Processor:
+            def apply_chat_template(self, messages, **kwargs):
+                self.kwargs = kwargs
+                return f"rendered:{messages[0]['content']}"
+
+        processor = _Processor()
+
+        self.assertEqual(
+            train_gemma4_full.render_gemma4_messages_for_text_only(
+                processor,
+                [{"role": "user", "content": "hello"}],
+            ),
+            "rendered:hello",
+        )
+        self.assertFalse(processor.kwargs["add_generation_prompt"])
+        self.assertFalse(processor.kwargs["enable_thinking"])
 
 
 class GemmaLoraWrapperTests(unittest.TestCase):

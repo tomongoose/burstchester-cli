@@ -3,7 +3,8 @@
 import argparse
 from typing import Any
 
-from train import load_config, train_from_config
+from train import load_config
+from train_gemma4_full import train_gemma4_full_from_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -17,7 +18,7 @@ def main() -> None:
     config: dict[str, Any] = load_config(args.config)
     config["modelRepo"] = str(config.get("modelRepo") or "google/gemma-4-E2B")
     config["trainingMethod"] = "full"
-    train_from_config(config)
+    train_gemma4_full_from_config(config)
 
 
 if __name__ == "__main__":
