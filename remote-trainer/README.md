@@ -66,3 +66,22 @@ docker run --rm --gpus all \
 Use this image as a Vertex AI Custom Training custom container. Pass user tokens through Secret Manager or job environment variables. Do not bake tokens into the image.
 
 Gemma 4 E2B full fine-tuning is memory-heavy. Use `NVIDIA_A100_80GB`, `NVIDIA_H100_80GB`, or larger for realistic runs. T4/L4/A100 40GB are not expected to complete FFT reliably.
+
+After configuring `gcloud` authentication and project selection, use the scripted launcher:
+
+```bash
+gcloud auth login
+gcloud config set project your-gcp-project
+
+export REGION="us-central1"
+export DATASET_IDS="legal-ko"
+export OUTPUT_MODEL_REPO="your-hf-org/your-gemma4-e2b-fft"
+export BURSTCHESTER_ACCESS_TOKEN="..."
+export HF_TOKEN="..."
+
+remote-trainer/submit-vertex-job.sh
+```
+
+The script enables required APIs, creates the Artifact Registry repository if needed, builds and pushes the Docker image, creates or updates Secret Manager token versions, prepares the Vertex service account, writes a CustomJob config, and submits the job.
+
+`BUILD_MODE=cloudbuild` is the default. Set `BUILD_MODE=docker` to build and push from the local Docker daemon.
