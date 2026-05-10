@@ -86,66 +86,68 @@ class Gemma4WrapperTests(unittest.TestCase):
         self.assertEqual(captured["modelRepo"], "google/gemma-3-4b-it")
         self.assertEqual(captured["trainingMethod"], "full")
 
-    def test_gemma4_full_load_kwargs_use_bfloat16_when_supported(self):
-        class _Bf16Cuda:
-            @staticmethod
-            def is_available():
-                return True
-
-            @staticmethod
-            def is_bf16_supported():
-                return True
-
-        class _Torch:
-            bfloat16 = "bfloat16"
-            float16 = "float16"
-            float32 = "float32"
-            cuda = _Bf16Cuda()
-
-        self.assertEqual(
-            train_gemma4_full.resolve_gemma4_model_load_kwargs(_Torch()),
-            {
-                "dtype": "bfloat16",
-            },
-        )
-
-    def test_gemma4_model_loader_falls_back_to_torch_dtype(self):
-        class _ModelClass:
+    def test_gemma4_unsloth_loader_enables_full_finetuning(self):
+        class _FastLanguageModel:
             calls = []
 
             @classmethod
-            def from_pretrained(cls, model_repo, **kwargs):
-                cls.calls.append((model_repo, kwargs))
-                if "dtype" in kwargs:
-                    raise TypeError("unexpected keyword argument 'dtype'")
-                return {"repo": model_repo, "kwargs": kwargs}
+            def from_pretrained(cls, **kwargs):
+                cls.calls.append(kwargs)
+                return {"model": True}, {"tokenizer": True}
 
-        model = train_gemma4_full.load_gemma4_model(
-            _ModelClass,
-            "google/gemma-4-E2B",
-            {"dtype": "bfloat16"},
+        model, tokenizer = train_gemma4_full.load_unsloth_gemma4_model(
+            _FastLanguageModel,
+            model_repo="google/gemma-4-E2B",
+            max_seq_length=128,
         )
 
-        self.assertEqual(model["kwargs"]["torch_dtype"], "bfloat16")
-        self.assertEqual(len(_ModelClass.calls), 2)
+        self.assertTrue(model["model"])
+        self.assertTrue(tokenizer["tokenizer"])
+        self.assertEqual(_FastLanguageModel.calls[0]["model_name"], "google/gemma-4-E2B")
+        self.assertEqual(_FastLanguageModel.calls[0]["max_seq_length"], 128)
+        self.assertFalse(_FastLanguageModel.calls[0]["load_in_4bit"])
+        self.assertTrue(_FastLanguageModel.calls[0]["full_finetuning"])
+        self.assertEqual(_FastLanguageModel.calls[0]["use_gradient_checkpointing"], "unsloth")
+
+    def test_gemma4_unsloth_loader_falls_back_without_checkpointing_arg(self):
+        class _FastLanguageModel:
+            calls = []
+
+            @classmethod
+            def from_pretrained(cls, **kwargs):
+                cls.calls.append(kwargs)
+                if "use_gradient_checkpointing" in kwargs:
+                    raise TypeError("unexpected keyword argument")
+                return "model", "tokenizer"
+
+        model, tokenizer = train_gemma4_full.load_unsloth_gemma4_model(
+            _FastLanguageModel,
+            model_repo="google/gemma-4-E2B",
+            max_seq_length=128,
+        )
+
+        self.assertEqual(model, "model")
+        self.assertEqual(tokenizer, "tokenizer")
+        self.assertEqual(len(_FastLanguageModel.calls), 2)
+        self.assertNotIn("use_gradient_checkpointing", _FastLanguageModel.calls[1])
 
     def test_gemma4_text_renderer_uses_processor_chat_template(self):
-        class _Processor:
+        class _Tokenizer:
             def apply_chat_template(self, messages, **kwargs):
                 self.kwargs = kwargs
                 return f"rendered:{messages[0]['content']}"
 
-        processor = _Processor()
+        tokenizer = _Tokenizer()
 
         self.assertEqual(
             train_gemma4_full.render_gemma4_messages_for_text_only(
-                processor,
+                tokenizer,
                 [{"role": "user", "content": "hello"}],
             ),
             "rendered:hello",
         )
-        self.assertFalse(processor.kwargs["add_generation_prompt"])
-        self.assertFalse(processor.kwargs["enable_thinking"])
+        self.assertFalse(tokenizer.kwargs["add_generation_prompt"])
+        self.assertFalse(tokenizer.kwargs["enable_thinking"])
 
 
 class GemmaLoraWrapperTests(unittest.TestCase):
