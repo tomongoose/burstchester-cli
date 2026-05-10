@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Python virtual environments
+.venv/
+.venv-*/
+venv/
+
+# Generated training/download outputs
+artifacts/
+outputs/
+workspaces/
+*.zip
+
+# Local credentials and machine-specific config
+.env
+.env.*
+!.env.example
+session.json
+access-token
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Logs
+*.log
+npm-debug.log*
