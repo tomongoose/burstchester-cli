@@ -92,14 +92,15 @@ NODE
 }
 
 install_python_deps() {
+  # Colab ships a CUDA-matched torch/torchvision/torchaudio stack. Upgrading
+  # torch here can pull a different CUDA toolkit and break the runtime.
   "${PYTHON_BIN}" -m pip install -q -U \
-    torch \
     transformers \
     peft \
     accelerate \
     datasets \
-    bitsandbytes \
     huggingface_hub
+  "${PYTHON_BIN}" -m pip install -q -U --no-deps bitsandbytes
 }
 
 upload_output_model() {
