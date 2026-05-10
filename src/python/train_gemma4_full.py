@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ def train_gemma4_full_from_config(config: dict[str, Any]) -> None:
     max_seq_length = int(config["maxSeqLength"])
 
     require_cuda_for_gemma4_fft(torch)
+    require_supported_fft_gpu(torch)
     log_cuda_memory(torch, "before model load")
     model, tokenizer = load_unsloth_gemma4_model(
         FastLanguageModel,
@@ -127,6 +129,34 @@ def require_cuda_for_gemma4_fft(torch_module) -> None:
         "Gemma 4 full fine-tuning requires a CUDA GPU runtime. "
         "In Colab, open Runtime > Change runtime type and select a GPU, "
         "then rerun the notebook."
+    )
+
+
+def require_supported_fft_gpu(torch_module) -> None:
+    device = torch_module.cuda.current_device()
+    free_bytes, total_bytes = torch_module.cuda.mem_get_info(device)
+    total_gib = total_bytes / 1024**3
+    is_bf16_supported = bool(getattr(torch_module.cuda, "is_bf16_supported", lambda: False)())
+    allow_low_vram = os.environ.get("BURSTCHESTER_ALLOW_LOW_VRAM_GEMMA4_FFT") == "1"
+
+    if is_bf16_supported and total_gib >= 24:
+        return
+
+    if allow_low_vram:
+        print(
+            "WARNING: overriding Gemma 4 FFT GPU guard. "
+            f"bf16={is_bf16_supported} total_vram={total_gib:.2f}GiB",
+            flush=True,
+        )
+        return
+
+    raise SystemExit(
+        "Gemma 4 FFT is not supported on this GPU setup. "
+        "Unsloth reports that float16 full fine-tuning upcasts weights to float32, "
+        "which exceeds Colab T4-class VRAM during model preparation. "
+        f"Detected bf16={is_bf16_supported}, total_vram={total_gib:.2f}GiB. "
+        "Use an A100/L4-class bf16 GPU with more VRAM, or set "
+        "BURSTCHESTER_ALLOW_LOW_VRAM_GEMMA4_FFT=1 to try anyway."
     )
 
 

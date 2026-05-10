@@ -17,6 +17,22 @@ class _CudaAvailable:
     def is_available():
         return True
 
+    @staticmethod
+    def current_device():
+        return 0
+
+    @staticmethod
+    def get_device_name(_device):
+        return "Test GPU"
+
+    @staticmethod
+    def mem_get_info(_device):
+        return (20 * 1024**3, 40 * 1024**3)
+
+    @staticmethod
+    def is_bf16_supported():
+        return True
+
 
 class _CudaUnavailable:
     @staticmethod
@@ -27,6 +43,8 @@ class _CudaUnavailable:
 class _TorchWithCuda:
     float16 = "float16"
     float32 = "float32"
+    __version__ = "2.10.0"
+    version = SimpleNamespace(cuda="12.8")
     cuda = _CudaAvailable()
 
 
@@ -89,6 +107,25 @@ class Gemma4WrapperTests(unittest.TestCase):
     def test_gemma4_fft_requires_cuda(self):
         with self.assertRaises(SystemExit):
             train_gemma4_full.require_cuda_for_gemma4_fft(_TorchWithoutCuda())
+
+    def test_gemma4_fft_rejects_t4_class_fp16_gpu(self):
+        class _T4Cuda(_CudaAvailable):
+            @staticmethod
+            def mem_get_info(_device):
+                return (14 * 1024**3, 14 * 1024**3)
+
+            @staticmethod
+            def is_bf16_supported():
+                return False
+
+        class _Torch:
+            cuda = _T4Cuda()
+
+        with self.assertRaises(SystemExit):
+            train_gemma4_full.require_supported_fft_gpu(_Torch())
+
+    def test_gemma4_fft_accepts_bf16_high_memory_gpu(self):
+        train_gemma4_full.require_supported_fft_gpu(_TorchWithCuda())
 
     def test_gemma4_unsloth_loader_enables_full_finetuning(self):
         class _FastLanguageModel:
