@@ -99,9 +99,38 @@ def train_gemma4_full_from_config(config: dict[str, Any]) -> None:
         train_dataset=train_dataset,
         data_collator=collator,
     )
-    trainer.train()
+    log_cuda_memory(torch, "before training")
+    oom_error = getattr(torch, "OutOfMemoryError", RuntimeError)
+    try:
+        trainer.train()
+    except oom_error as error:
+        raise SystemExit(
+            "CUDA out of memory during Gemma 4 full fine-tuning backward pass. "
+            "The model was already loaded; this allocation is for train-time "
+            "gradients/activations/optimizer state required by FFT. Use a larger "
+            "GPU, reduce maxSeqLength further, or switch to LoRA/QLoRA for Colab-class GPUs."
+        ) from error
     trainer.save_model(str(output_dir))
     processor.save_pretrained(str(output_dir))
+
+
+def log_cuda_memory(torch_module, label: str) -> None:
+    if not torch_module.cuda.is_available():
+        return
+
+    device = torch_module.cuda.current_device()
+    free_bytes, total_bytes = torch_module.cuda.mem_get_info(device)
+    allocated_bytes = torch_module.cuda.memory_allocated(device)
+    reserved_bytes = torch_module.cuda.memory_reserved(device)
+    gib = 1024**3
+    print(
+        "CUDA memory "
+        f"{label}: free={free_bytes / gib:.2f}GiB "
+        f"total={total_bytes / gib:.2f}GiB "
+        f"allocated={allocated_bytes / gib:.2f}GiB "
+        f"reserved={reserved_bytes / gib:.2f}GiB",
+        flush=True,
+    )
 
 
 def resolve_gemma4_model_load_kwargs(torch_module) -> dict[str, Any]:
