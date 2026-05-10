@@ -22,7 +22,9 @@ def import_gemma4_training_stack():
         )
     except ImportError as error:
         raise SystemExit(
-            "Gemma 4 full fine-tuning requires: torch transformers accelerate"
+            "Gemma 4 full fine-tuning requires a transformers build with "
+            "AutoModelForImageTextToText. Install/upgrade: "
+            "python -m pip install -U torch accelerate transformers"
         ) from error
 
     return {
@@ -54,10 +56,10 @@ def train_gemma4_full_from_config(config: dict[str, Any]) -> None:
     tokenizer.padding_side = "right"
 
     model_kwargs = resolve_gemma4_model_load_kwargs(torch)
-    model = AutoModelForImageTextToText.from_pretrained(
+    model = load_gemma4_model(
+        AutoModelForImageTextToText,
         model_repo,
-        trust_remote_code=True,
-        **model_kwargs,
+        model_kwargs,
     )
     if hasattr(model, "config"):
         model.config.use_cache = False
@@ -104,13 +106,35 @@ def train_gemma4_full_from_config(config: dict[str, Any]) -> None:
 
 def resolve_gemma4_model_load_kwargs(torch_module) -> dict[str, Any]:
     return {
-        "device_map": "auto",
-        "torch_dtype": torch_module.bfloat16
+        "dtype": torch_module.bfloat16
         if bool(torch_module.cuda.is_available() and getattr(torch_module.cuda, "is_bf16_supported", lambda: False)())
         else torch_module.float16
         if torch_module.cuda.is_available()
         else torch_module.float32,
     }
+
+
+def load_gemma4_model(model_class, model_repo: str, model_kwargs: dict[str, Any]):
+    try:
+        return model_class.from_pretrained(
+            model_repo,
+            trust_remote_code=True,
+            **model_kwargs,
+        )
+    except TypeError as error:
+        if "dtype" not in model_kwargs:
+            raise
+
+        legacy_kwargs = dict(model_kwargs)
+        legacy_kwargs["torch_dtype"] = legacy_kwargs.pop("dtype")
+        try:
+            return model_class.from_pretrained(
+                model_repo,
+                trust_remote_code=True,
+                **legacy_kwargs,
+            )
+        except TypeError:
+            raise error
 
 
 def get_processor_tokenizer(processor):
