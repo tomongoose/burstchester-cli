@@ -58,8 +58,8 @@ def main() -> None:
 
 def read_settings() -> dict:
     return {
-        "burstchester_access_token": required_env("BURSTCHESTER_ACCESS_TOKEN"),
-        "hf_token": required_env("HF_TOKEN"),
+        "burstchester_access_token": secret_or_env("BURSTCHESTER_ACCESS_TOKEN"),
+        "hf_token": secret_or_env("HF_TOKEN"),
         "dataset_ids": required_env("DATASET_IDS"),
         "output_model_repo": required_env("OUTPUT_MODEL_REPO"),
         "base_model": env("BASE_MODEL", "google/gemma-4-E2B"),
@@ -88,6 +88,51 @@ def required_env(name: str) -> str:
     if not value:
         raise SystemExit(f"Missing required environment variable: {name}")
     return value
+
+
+def secret_or_env(name: str) -> str:
+    direct_value = os.environ.get(name, "").strip()
+    if direct_value:
+        return direct_value
+
+    secret_name = os.environ.get(f"{name}_SECRET", "").strip()
+    if secret_name:
+        return read_secret(secret_name)
+
+    raise SystemExit(f"Missing required environment variable: {name} or {name}_SECRET")
+
+
+def read_secret(secret_name: str) -> str:
+    try:
+        from google.cloud import secretmanager
+    except ImportError as error:
+        raise SystemExit("google-cloud-secret-manager is required to read *_SECRET values.") from error
+
+    resource_name = normalize_secret_resource_name(secret_name)
+    client = secretmanager.SecretManagerServiceClient()
+    response = client.access_secret_version(request={"name": resource_name})
+    value = response.payload.data.decode("utf-8").strip()
+    if not value:
+        raise SystemExit(f"Secret was empty: {resource_name}")
+    return value
+
+
+def normalize_secret_resource_name(secret_name: str) -> str:
+    if secret_name.startswith("projects/"):
+        return secret_name
+
+    project_id = (
+        os.environ.get("GOOGLE_CLOUD_PROJECT")
+        or os.environ.get("GCP_PROJECT")
+        or os.environ.get("CLOUD_ML_PROJECT_ID")
+        or os.environ.get("PROJECT_ID")
+        or ""
+    ).strip()
+    if not project_id:
+        raise SystemExit(
+            f"{secret_name} is not a full Secret Manager resource name and no project id env was set."
+        )
+    return f"projects/{project_id}/secrets/{secret_name}/versions/latest"
 
 
 def env(name: str, default: str) -> str:

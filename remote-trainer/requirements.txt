@@ -1,3 +1,4 @@
 unsloth
 unsloth_zoo
 huggingface_hub[hf_transfer]
+google-cloud-secret-manager

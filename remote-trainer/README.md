@@ -21,6 +21,15 @@ DATASET_IDS
 OUTPUT_MODEL_REPO
 ```
 
+For Vertex AI, prefer Secret Manager resource names instead of raw token values:
+
+```text
+BURSTCHESTER_ACCESS_TOKEN_SECRET=projects/PROJECT_ID/secrets/burstchester-access-token/versions/latest
+HF_TOKEN_SECRET=projects/PROJECT_ID/secrets/hf-token/versions/latest
+```
+
+If both forms are set, the direct token environment variable wins.
+
 ## Common Settings
 
 ```text
