@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from "node:http";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { basename, join, resolve } from "node:path";
@@ -610,7 +611,7 @@ async function handleTrain(flags) {
   const datasetId = datasetIds[0];
   const modelRepo = requiredFlag(flags, "model-repo");
   const workspace = resolve(String(flags.workspace || join(ROOT_DIR, "artifacts", "training", datasetId)));
-  const pythonBin = typeof flags.python === "string" ? flags.python : "python3";
+  const pythonBin = resolvePythonBin(flags);
   const trainingMethod = typeof flags["training-method"] === "string" ? flags["training-method"] : "qlora";
 
   const prepared = await prepareMergedDatasetForTraining({
@@ -666,7 +667,7 @@ async function handleTrainGemma4E2BFull(flags) {
   const datasetIds = await resolveDatasetIdsInput({ flags, session });
   const datasetId = datasetIds[0];
   const workspace = resolve(String(flags.workspace || join(ROOT_DIR, "artifacts", "training", `gemma4-e2b-full-${datasetId}`)));
-  const pythonBin = typeof flags.python === "string" ? flags.python : "python3";
+  const pythonBin = resolvePythonBin(flags);
   const modelRepo = typeof flags["model-repo"] === "string" && flags["model-repo"].trim()
     ? flags["model-repo"].trim()
     : "google/gemma-4-E2B";
@@ -721,7 +722,7 @@ async function handleTrainGemma2BItLora(flags) {
   const datasetIds = await resolveDatasetIdsInput({ flags, session });
   const datasetId = datasetIds[0];
   const workspace = resolve(String(flags.workspace || join(ROOT_DIR, "artifacts", "training", `gemma-2b-it-lora-${datasetId}`)));
-  const pythonBin = typeof flags.python === "string" ? flags.python : "python3";
+  const pythonBin = resolvePythonBin(flags);
   const modelRepo = typeof flags["model-repo"] === "string" && flags["model-repo"].trim()
     ? flags["model-repo"].trim()
     : "google/gemma-2b-it";
@@ -1061,4 +1062,13 @@ function readNumberFlag(rawValue, defaultValue, flagName) {
   }
 
   return parsed;
+}
+
+function resolvePythonBin(flags) {
+  if (typeof flags.python === "string" && flags.python.trim()) {
+    return flags.python.trim();
+  }
+
+  const venvPython = join(ROOT_DIR, ".venv", "bin", "python");
+  return existsSync(venvPython) ? venvPython : "python3";
 }
