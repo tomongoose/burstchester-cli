@@ -105,10 +105,29 @@ class Gemma4WrapperTests(unittest.TestCase):
         self.assertEqual(
             train_gemma4_full.resolve_gemma4_model_load_kwargs(_Torch()),
             {
-                "device_map": "auto",
-                "torch_dtype": "bfloat16",
+                "dtype": "bfloat16",
             },
         )
+
+    def test_gemma4_model_loader_falls_back_to_torch_dtype(self):
+        class _ModelClass:
+            calls = []
+
+            @classmethod
+            def from_pretrained(cls, model_repo, **kwargs):
+                cls.calls.append((model_repo, kwargs))
+                if "dtype" in kwargs:
+                    raise TypeError("unexpected keyword argument 'dtype'")
+                return {"repo": model_repo, "kwargs": kwargs}
+
+        model = train_gemma4_full.load_gemma4_model(
+            _ModelClass,
+            "google/gemma-4-E2B",
+            {"dtype": "bfloat16"},
+        )
+
+        self.assertEqual(model["kwargs"]["torch_dtype"], "bfloat16")
+        self.assertEqual(len(_ModelClass.calls), 2)
 
     def test_gemma4_text_renderer_uses_processor_chat_template(self):
         class _Processor:
