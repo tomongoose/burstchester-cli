@@ -20,7 +20,6 @@ COPY src/python /app/src/python
 COPY remote-trainer/requirements.txt /app/remote-trainer/requirements.txt
 COPY remote-trainer/entrypoint.py /app/remote-trainer/entrypoint.py
 
-RUN python3 -m pip install --break-system-packages --upgrade pip \
-    && python3 -m pip install --break-system-packages --no-cache-dir -r /app/remote-trainer/requirements.txt
+RUN python3 -m pip install --break-system-packages --no-cache-dir -r /app/remote-trainer/requirements.txt
 
 ENTRYPOINT ["python3", "/app/remote-trainer/entrypoint.py"]

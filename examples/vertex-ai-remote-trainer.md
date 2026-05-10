@@ -110,6 +110,7 @@ Cleanup defaults:
 
 ```bash
 export WAIT_FOR_COMPLETION="true"
+export SKIP_IMAGE_BUILD="false"
 export POLL_INTERVAL_SECONDS="60"
 export CLEANUP_ARTIFACT_IMAGE="true"
 export CLEANUP_ARTIFACT_REPOSITORY="false"

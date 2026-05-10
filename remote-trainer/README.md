@@ -90,6 +90,7 @@ Cleanup defaults:
 
 ```text
 WAIT_FOR_COMPLETION=true
+SKIP_IMAGE_BUILD=false
 CLEANUP_ARTIFACT_IMAGE=true
 CLEANUP_ARTIFACT_REPOSITORY=false
 ```
