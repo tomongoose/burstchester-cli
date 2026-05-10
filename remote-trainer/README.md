@@ -82,6 +82,16 @@ export HF_TOKEN="..."
 remote-trainer/submit-vertex-job.sh
 ```
 
-The script enables required APIs, creates the Artifact Registry repository if needed, builds and pushes the Docker image, creates or updates Secret Manager token versions, prepares the Vertex service account, writes a CustomJob config, and submits the job.
+The script enables required APIs, creates the Artifact Registry repository if needed, builds and pushes the Docker image, creates or updates Secret Manager token versions, prepares the Vertex service account, writes a CustomJob config, submits the job, waits for completion, and deletes the pushed Artifact Registry image after a successful training/upload run.
 
 `BUILD_MODE=cloudbuild` is the default. Set `BUILD_MODE=docker` to build and push from the local Docker daemon.
+
+Cleanup defaults:
+
+```text
+WAIT_FOR_COMPLETION=true
+CLEANUP_ARTIFACT_IMAGE=true
+CLEANUP_ARTIFACT_REPOSITORY=false
+```
+
+Set `CLEANUP_ARTIFACT_REPOSITORY=true` only when the repository is dedicated to this run.

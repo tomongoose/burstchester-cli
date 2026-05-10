@@ -20,6 +20,13 @@ require_env() {
   fi
 }
 
+is_true() {
+  case "${1:-}" in
+    true | TRUE | 1 | yes | YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 secret_resource() {
   local name="$1"
   printf 'projects/%s/secrets/%s/versions/latest' "${PROJECT_ID}" "${name}"
@@ -73,6 +80,49 @@ add_secret_role() {
     >/dev/null
 }
 
+wait_for_job() {
+  local job_name="$1"
+  local state=""
+
+  printf '\nWaiting for Vertex AI custom job to finish...\n'
+  while true; do
+    state="$(gcloud ai custom-jobs describe "${job_name}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format='value(state)')"
+
+    printf 'Vertex job state: %s\n' "${state}"
+    case "${state}" in
+      JOB_STATE_SUCCEEDED)
+        return 0
+        ;;
+      JOB_STATE_FAILED | JOB_STATE_CANCELLED | JOB_STATE_EXPIRED)
+        return 1
+        ;;
+    esac
+
+    sleep "${POLL_INTERVAL_SECONDS}"
+  done
+}
+
+cleanup_artifacts() {
+  if is_true "${CLEANUP_ARTIFACT_IMAGE}"; then
+    printf '\nDeleting Artifact Registry image: %s\n' "${IMAGE_URI}"
+    gcloud artifacts docker images delete "${IMAGE_URI}" \
+      --project="${PROJECT_ID}" \
+      --delete-tags \
+      --quiet
+  fi
+
+  if is_true "${CLEANUP_ARTIFACT_REPOSITORY}"; then
+    printf '\nDeleting Artifact Registry repository: %s\n' "${REPOSITORY}"
+    gcloud artifacts repositories delete "${REPOSITORY}" \
+      --project="${PROJECT_ID}" \
+      --location="${REGION}" \
+      --quiet
+  fi
+}
+
 need_command gcloud
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
@@ -86,6 +136,10 @@ IMAGE_NAME="${IMAGE_NAME:-gemma4-remote-trainer}"
 IMAGE_TAG="${IMAGE_TAG:-gemma4-full-trainer}"
 IMAGE_URI="${IMAGE_URI:-${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}}"
 BUILD_MODE="${BUILD_MODE:-cloudbuild}"
+WAIT_FOR_COMPLETION="${WAIT_FOR_COMPLETION:-true}"
+POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-60}"
+CLEANUP_ARTIFACT_IMAGE="${CLEANUP_ARTIFACT_IMAGE:-true}"
+CLEANUP_ARTIFACT_REPOSITORY="${CLEANUP_ARTIFACT_REPOSITORY:-false}"
 
 VERTEX_SERVICE_ACCOUNT_NAME="${VERTEX_SERVICE_ACCOUNT_NAME:-vertex-trainer}"
 VERTEX_SERVICE_ACCOUNT="${VERTEX_SERVICE_ACCOUNT:-${VERTEX_SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
@@ -256,10 +310,24 @@ EOF
 fi
 
 printf '\nSubmitting Vertex AI custom job...\n'
-gcloud ai custom-jobs create \
+JOB_NAME="$(gcloud ai custom-jobs create \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
-  --config="${JOB_CONFIG}"
+  --config="${JOB_CONFIG}" \
+  --format='value(name)')"
+[[ -n "${JOB_NAME}" ]] || fail "could not resolve submitted Vertex job name"
 
 printf '\nSubmitted. Job config: %s\n' "${JOB_CONFIG}"
+printf 'Job name: %s\n' "${JOB_NAME}"
 printf 'List jobs: gcloud ai custom-jobs list --project=%s --region=%s\n' "${PROJECT_ID}" "${REGION}"
+
+if is_true "${WAIT_FOR_COMPLETION}"; then
+  if wait_for_job "${JOB_NAME}"; then
+    printf '\nVertex job succeeded. The trainer has completed and uploaded the output model.\n'
+    cleanup_artifacts
+  else
+    fail "Vertex job did not succeed. Artifact Registry cleanup was skipped for debugging."
+  fi
+else
+  printf 'WAIT_FOR_COMPLETION=false, so Artifact Registry cleanup is skipped by this run.\n'
+fi

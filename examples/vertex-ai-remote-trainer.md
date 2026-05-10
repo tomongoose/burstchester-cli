@@ -62,6 +62,10 @@ The script performs the standardized execution sequence:
 6. Grants the required project and secret access roles.
 7. Generates a temporary Vertex CustomJob YAML.
 8. Submits the Vertex AI custom job.
+9. Waits for the job to finish.
+10. Deletes the pushed Artifact Registry image after the job succeeds.
+
+The trainer process exits only after the output model has been uploaded to Hugging Face, so a `JOB_STATE_SUCCEEDED` status means the upload completed. If the Vertex job fails or is cancelled, the script skips Artifact Registry cleanup so the image remains available for debugging.
 
 `BUILD_MODE=cloudbuild` is the default and does not require local Docker. To build locally:
 
@@ -101,6 +105,17 @@ export ACCELERATOR_COUNT="1"
 export BOOT_DISK_TYPE="pd-ssd"
 export BOOT_DISK_SIZE_GB="500"
 ```
+
+Cleanup defaults:
+
+```bash
+export WAIT_FOR_COMPLETION="true"
+export POLL_INTERVAL_SECONDS="60"
+export CLEANUP_ARTIFACT_IMAGE="true"
+export CLEANUP_ARTIFACT_REPOSITORY="false"
+```
+
+`CLEANUP_ARTIFACT_IMAGE=true` removes the pushed image tag after a successful run. Set `CLEANUP_ARTIFACT_REPOSITORY=true` only when the Artifact Registry repository is dedicated to this run, because repository deletion removes every image in that repository.
 
 ## Monitor Logs
 
