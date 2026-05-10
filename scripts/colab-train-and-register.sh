@@ -4,18 +4,19 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  BURSTCHESTER_FIREBASE_ID_TOKEN=<firebase_id_token> \
+  BURSTCHESTER_ACCESS_TOKEN=<web_cli_access_token> \
   HF_TOKEN=<huggingface_token> \
   DATASET_IDS="dataset-1,dataset-2" \
   BASE_MODEL="Qwen/Qwen3-0.6B" \
-  ./cli/scripts/colab-train-and-register.sh
+  ./scripts/colab-train-and-register.sh
 
 Required env:
-  BURSTCHESTER_FIREBASE_ID_TOKEN  Firebase ID token for the Burstchester user.
+  BURSTCHESTER_ACCESS_TOKEN       Burstchester web-issued CLI access token.
   DATASET_IDS                     Comma, space, or newline separated dataset IDs.
   BASE_MODEL                      Hugging Face model repo used as the training base model.
 
 Optional env:
+  BURSTCHESTER_FIREBASE_ID_TOKEN  Firebase ID token for legacy session-based auth.
   HF_TOKEN                        Hugging Face token for gated models and upload.
   TRAIN_COMMAND                   train | train-gemma-2b-it-lora | train-gemma4-e2b-full.
   TRAINING_METHOD                 qlora | lora | full, used with TRAIN_COMMAND=train.
@@ -122,20 +123,33 @@ PY
 }
 
 main() {
-  require_env BURSTCHESTER_FIREBASE_ID_TOKEN
+  if [[ -z "${BURSTCHESTER_ACCESS_TOKEN:-}" && -z "${BURSTCHESTER_FIREBASE_ID_TOKEN:-}" ]]; then
+    echo "Missing required env: BURSTCHESTER_ACCESS_TOKEN or BURSTCHESTER_FIREBASE_ID_TOKEN" >&2
+    usage >&2
+    exit 2
+  fi
   require_env DATASET_IDS
   require_env BASE_MODEL
 
-  local repo_root
-  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-  cd "${repo_root}/cli"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "${script_dir}/../src/cli.mjs" ]]; then
+    cd "${script_dir}/.."
+  elif [[ -f "${script_dir}/../../cli/src/cli.mjs" ]]; then
+    cd "${script_dir}/../../cli"
+  else
+    echo "Could not locate Burstchester CLI root from ${script_dir}" >&2
+    exit 2
+  fi
 
   export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
   PYTHON_BIN="${PYTHON_BIN:-python3}"
   TRAIN_COMMAND="${TRAIN_COMMAND:-train-gemma-2b-it-lora}"
   WORKSPACE="${WORKSPACE:-/content/burstchester-training}"
 
-  write_session
+  if [[ -n "${BURSTCHESTER_FIREBASE_ID_TOKEN:-}" ]]; then
+    write_session
+  fi
   normalize_dataset_list > "${WORKSPACE}.dataset-ids.txt"
   node src/cli.mjs dataset-list import --file "${WORKSPACE}.dataset-ids.txt" >/dev/null
 
