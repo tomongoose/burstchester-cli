@@ -12,8 +12,8 @@ from train import (
 
 def import_unsloth_gemma4_training_stack():
     try:
-        import torch
         from unsloth import FastLanguageModel
+        import torch
         from datasets import Dataset
         from trl import SFTConfig, SFTTrainer
     except ImportError as error:
@@ -47,11 +47,14 @@ def train_gemma4_full_from_config(config: dict[str, Any]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     max_seq_length = int(config["maxSeqLength"])
 
+    require_cuda_for_gemma4_fft(torch)
+    log_cuda_memory(torch, "before model load")
     model, tokenizer = load_unsloth_gemma4_model(
         FastLanguageModel,
         model_repo=model_repo,
         max_seq_length=max_seq_length,
     )
+    log_model_device(model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token or tokenizer.unk_token
     tokenizer.padding_side = "right"
@@ -109,6 +112,24 @@ def train_gemma4_full_from_config(config: dict[str, Any]) -> None:
     tokenizer.save_pretrained(str(output_dir))
 
 
+def require_cuda_for_gemma4_fft(torch_module) -> None:
+    if torch_module.cuda.is_available():
+        device = torch_module.cuda.current_device()
+        print(
+            "CUDA available: "
+            f"device={device} name={torch_module.cuda.get_device_name(device)} "
+            f"torch={torch_module.__version__} cuda={torch_module.version.cuda}",
+            flush=True,
+        )
+        return
+
+    raise SystemExit(
+        "Gemma 4 full fine-tuning requires a CUDA GPU runtime. "
+        "In Colab, open Runtime > Change runtime type and select a GPU, "
+        "then rerun the notebook."
+    )
+
+
 def load_unsloth_gemma4_model(FastLanguageModel, model_repo: str, max_seq_length: int):
     kwargs = {
         "model_name": model_repo,
@@ -127,6 +148,20 @@ def load_unsloth_gemma4_model(FastLanguageModel, model_repo: str, max_seq_length
             return FastLanguageModel.from_pretrained(**legacy_kwargs)
         except TypeError:
             raise error
+
+
+def log_model_device(model) -> None:
+    try:
+        parameter = next(model.parameters())
+    except Exception:
+        print("Model device: unable to inspect first parameter", flush=True)
+        return
+
+    print(
+        "Model first parameter: "
+        f"device={parameter.device} dtype={parameter.dtype} requires_grad={parameter.requires_grad}",
+        flush=True,
+    )
 
 
 def log_cuda_memory(torch_module, label: str) -> None:

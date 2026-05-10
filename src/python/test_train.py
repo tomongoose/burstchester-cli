@@ -86,6 +86,10 @@ class Gemma4WrapperTests(unittest.TestCase):
         self.assertEqual(captured["modelRepo"], "google/gemma-3-4b-it")
         self.assertEqual(captured["trainingMethod"], "full")
 
+    def test_gemma4_fft_requires_cuda(self):
+        with self.assertRaises(SystemExit):
+            train_gemma4_full.require_cuda_for_gemma4_fft(_TorchWithoutCuda())
+
     def test_gemma4_unsloth_loader_enables_full_finetuning(self):
         class _FastLanguageModel:
             calls = []
